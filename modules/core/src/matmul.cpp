@@ -859,8 +859,8 @@ static bool ocl_gemm( InputArray matA, InputArray matB, double alpha,
                ocl::KernelArg::ReadWrite(D, cn, kercn),
                sizeA.width, (float)alpha, (float)beta);
 
-    size_t globalsize[2] = { sizeD.width * cn / kercn, sizeD.height};
-    size_t localsize[2] = { block_size, block_size};
+    size_t globalsize[2] = { (size_t)sizeD.width * cn / kercn, (size_t)sizeD.height};
+    size_t localsize[2] = { (size_t)block_size, (size_t)block_size};
     return k.run(2, globalsize, block_size!=1 ? localsize : NULL, false);
 }
 #endif
@@ -1195,7 +1195,7 @@ void cv::gemm( InputArray matA, InputArray matB, double alpha,
     GEMMBlockMulFunc blockMulFunc;
     GEMMStoreFunc storeFunc;
     Mat *matD = &D, tmat;
-    int tmat_size = 0;
+    size_t tmat_size = 0;
     const uchar* Cdata = C.data;
     size_t Cstep = C.data ? (size_t)C.step : 0;
     AutoBuffer<uchar> buf;
@@ -1228,7 +1228,7 @@ void cv::gemm( InputArray matA, InputArray matB, double alpha,
 
     if( D.data == A.data || D.data == B.data )
     {
-        tmat_size = d_size.width*d_size.height*CV_ELEM_SIZE(type);
+        tmat_size = (size_t)d_size.width*d_size.height*CV_ELEM_SIZE(type);
         // Allocate tmat later, once the size of buf is known
         matD = &tmat;
     }
@@ -1319,7 +1319,7 @@ void cv::gemm( InputArray matA, InputArray matB, double alpha,
         int is_b_t = flags & GEMM_2_T;
         int elem_size = CV_ELEM_SIZE(type);
         int dk0_1, dk0_2;
-        int a_buf_size = 0, b_buf_size, d_buf_size;
+        size_t a_buf_size = 0, b_buf_size, d_buf_size;
         uchar* a_buf = 0;
         uchar* b_buf = 0;
         uchar* d_buf = 0;
@@ -1360,12 +1360,12 @@ void cv::gemm( InputArray matA, InputArray matB, double alpha,
             dn0 = block_size / dk0;
 
         dk0_1 = (dn0+dn0/8+2) & -2;
-        b_buf_size = (dk0+dk0/8+1)*dk0_1*elem_size;
-        d_buf_size = (dk0+dk0/8+1)*dk0_1*work_elem_size;
+        b_buf_size = (size_t)(dk0+dk0/8+1)*dk0_1*elem_size;
+        d_buf_size = (size_t)(dk0+dk0/8+1)*dk0_1*work_elem_size;
 
         if( is_a_t )
         {
-            a_buf_size = (dm0+dm0/8+1)*((dk0+dk0/8+2)&-2)*elem_size;
+            a_buf_size = (size_t)(dm0+dm0/8+1)*((dk0+dk0/8+2)&-2)*elem_size;
             flags &= ~GEMM_1_T;
         }
 
@@ -2304,7 +2304,7 @@ static bool ocl_scaleAdd( InputArray _src1, double alpha, InputArray _src2, Outp
     else
         k.args(src1arg, src2arg, dstarg, alpha);
 
-    size_t globalsize[2] = { dst.cols * cn / kercn, (dst.rows + rowsPerWI - 1) / rowsPerWI };
+    size_t globalsize[2] = { (size_t)dst.cols * cn / kercn, ((size_t)dst.rows + rowsPerWI - 1) / rowsPerWI };
     return k.run(2, globalsize, NULL, false);
 }
 
@@ -2916,7 +2916,7 @@ dotProd_(const T* src1, const T* src2, int len)
 static double dotProd_8u(const uchar* src1, const uchar* src2, int len)
 {
     double r = 0;
-#if ARITHM_USE_IPP && 0
+#if ARITHM_USE_IPP && IPP_DISABLE_BLOCK
     CV_IPP_CHECK()
     {
         if (0 <= ippiDotProd_8u64f_C1R(src1, (int)(len*sizeof(src1[0])),
@@ -3131,7 +3131,7 @@ static double dotProd_16u(const ushort* src1, const ushort* src2, int len)
 
 static double dotProd_16s(const short* src1, const short* src2, int len)
 {
-#if (ARITHM_USE_IPP == 1)
+#if (ARITHM_USE_IPP == 1) && (IPP_VERSION_X100 != 900) // bug in IPP 9.0.0
     CV_IPP_CHECK()
     {
         double r = 0;

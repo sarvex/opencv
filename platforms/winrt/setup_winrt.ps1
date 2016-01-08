@@ -1,17 +1,29 @@
-<#
-Copyright © Microsoft Open Technologies, Inc.
-All Rights Reserved
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
+ï»¿<#
+Copyright (c) Microsoft Open Technologies, Inc.
+All rights reserved.
 
-You may obtain a copy of the License at
-http://www.apache.org/licenses/LICENSE-2.0
+(3-clause BSD License)
 
-THIS CODE IS PROVIDED ON AN *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
-EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED WARRANTIES OR CONDITIONS OF TITLE,
-FITNESS FOR A PARTICULAR PURPOSE, MERCHANTABLITY OR NON-INFRINGEMENT.
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that
+the following conditions are met:
 
-See the Apache 2 License for the specific language governing permissions and limitations under the License.
+1. Redistributions of source code must retain the above copyright notice, this list of conditions and the
+following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+following disclaimer in the documentation and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or
+promote products derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 #>
 
 [CmdletBinding()]
@@ -38,6 +50,10 @@ Param(
     [Array]
     [ValidateNotNull()]
     $ARCHITECTURES_IN = "x86",
+
+    [parameter(Mandatory=$False)]
+    [String]
+    $TESTS = "None",
 
     [parameter(Mandatory=$False)]
     [String]
@@ -117,6 +133,16 @@ function Call-MSBuild($path, $config)
     return $true
 }
 
+function RunAccuracyTests($path) {
+    md "$path\bin\Release\accuracy"
+    python "$PSScriptRoot\..\..\modules\ts\misc\run.py" -w "$path\bin\Release\accuracy" -a "$path\bin\Release"
+}
+
+function RunPerfTests($path) {
+    md "$path\bin\Release\perf"
+    python "$PSScriptRoot\..\..\modules\ts\misc\run.py" -w "$path\bin\Release\perf" "$path\bin\Release"
+}
+
 Function Execute() {
     If ($HELP.IsPresent) {
         ShowHelp
@@ -162,6 +188,7 @@ Function Execute() {
             Throw "$($_) is not valid! Please use x86, x64, ARM"
         }
     }
+
     D "Processed Architectures: $architectures"
 
     # Assuming we are in '<ocv-sources>/platforms/winrt' we should move up to sources root directory
@@ -251,6 +278,25 @@ Function Execute() {
 
                         Call-MSBuild "OpenCV.sln" "Release"
                         Call-MSBuild "INSTALL.vcxproj" "Release"
+
+                        Try {
+                            # Running tests for release versions:
+                            If ($TESTS -eq "ALL") {
+                                RunAccuracyTests "$path"
+                                RunPerfTests "$path"
+                            } else {
+                                If($TESTS -eq "ACC") {
+                                    RunAccuracyTests "$path"
+                                }
+                                If($TESTS -eq "PERF") {
+                                    RunPerfTests "$path"
+                                }
+                            }
+                        } Catch {
+                            $ErrorMessage = $_.Exception.Message
+                            L "Error: $ErrorMessage"
+                            exit
+                        }
                     }
                 } Catch {
                     $ErrorMessage = $_.Exception.Message
@@ -293,8 +339,10 @@ Function ShowHelp() {
     Write-Host "     cmd> setup_winrt.bat [params]"
     Write-Host "     cmd> PowerShell.exe -ExecutionPolicy Unrestricted -File setup_winrt.ps1 [params]"
     Write-Host "   Parameters:"
-    Write-Host "     setup_winrt [options] [platform] [version] [architecture] [generator] [install-path]"
+    Write-Host "     setup_winrt [options] [platform] [version] [architecture] [tests] [generator] [install-path]"
     Write-Host "     setup_winrt -b 'WP' 'x86,ARM' "
+    Write-Host "     setup_winrt -b 'WP' 'x86,ARM' ALL"
+    Write-Host "     setup_winrt -b 'WP' 'x86,ARM' -test PERF "
     Write-Host "     setup_winrt -architecture x86 -platform WP "
     Write-Host "     setup_winrt -arc x86 -plat 'WP,WS' "
     Write-Host "     setup_winrt -a x86 -g 'Visual Studio 11 2012' -pl WP "
@@ -317,6 +365,10 @@ Function ShowHelp() {
     Write-Host "                 Example: 'ARM,x64' "
     Write-Host "                 Options: x86, ARM, x64. Available options may be limited depending on your local setup. "
     Write-Host "                 Note that you'll need to use quotes to specify more than one architecture. "
+    Write-Host "     tests - Test sets to run. Requires -b option otherwise ignored. "
+    Write-Host "                 Default: None. "
+    Write-Host "                 Example: 'ALL' "
+    Write-Host "                 Options: ACC, PERF, ALL. "
     Write-Host "     generator - Visual Studio instance used to generate the projects. "
     Write-Host "                 Default: Visual Studio 12 2013 "
     Write-Host "                 Example: 'Visual Studio 11 2012' "
